@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Multi Stock Forecast</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+        <style>
+        body {
+            background-color: #121212;
+            color: white;
+            font-family: Arial, sans-serif;
+            padding: 20px;
+        }
+
+        h2 {
+            color: #00c853;
+        }
+
+        .stock-menu {
+            margin-bottom: 20px;
+        }
+
+        .stock-menu a {
+            margin-right: 15px;
+            font-size: 1.1em;
+            text-decoration: none;
+            color: #00c853;
+            padding: 5px 10px;
+            border-radius: 5px;
+            transition: background 0.3s ease;
+        }
+
+        .stock-menu a:hover {
+            background-color: #2c2c2c;
+        }
+
+        .stock-menu a.active {
+            background-color: #00c853;
+            color: black;
+        }
+        .result-box {
+            display: block;
+            margin: 20px auto 0 auto;
+            font-size: 1em;
+            background-color: #1e1e1e;
+            padding: 12px 20px;
+            border-radius: 8px;
+            color: #ccc;
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.05);
+            line-height: 1.6;
+            text-align: left;
+            max-width: 500px;
+            width: 90%;
+        }
+
+
+        .result-box strong {
+            font-weight: 500;
+            color: #ddd;
+        }
+
+        .result-box span {
+            font-weight: bold;
+        }
+
+        .result-box .pos {
+            color: #00e676; /* เขียวเข้มสว่าง */
+        }
+
+        .result-box .neg {
+            color: #ef5350; /* แดงสุขุม */
+        }
+
+
+        #graph {
+            width: 100%;
+            height: 100%;
+            max-width: 100%;
+            margin: auto;
+        }
+
+        .custom-checkbox {
+            display: inline-flex;
+            align-items: center;
+            position: relative;
+            cursor: pointer;
+            margin: 10px 20px;
+            font-size: 1.1em;
+            user-select: none;
+        }
+
+        .custom-checkbox input {
+            opacity: 0;
+            position: absolute;
+            cursor: pointer;
+            height: 0;
+            width: 0;
+        }
+
+        .checkmark {
+            height: 20px;
+            width: 20px;
+            background-color: #444;
+            border-radius: 4px;
+            display: inline-block;
+            margin-right: 10px;
+            transition: 0.3s;
+            box-shadow: inset 0 0 3px #000;
+        }
+
+        /* 🔴 LSTM (แดง) */
+        #lstm-checkbox:checked ~ .checkmark {
+            background-color: #ff5252;
+            box-shadow: 0 0 5px #ff5252;
+        }
+        #lstm-checkbox:checked ~ .label-text {
+            color: #ff5252;
+            font-weight: bold;
+        }
+
+        /* 🔵 Transformer (ฟ้า) */
+        #trans-checkbox:checked ~ .checkmark {
+            background-color: #40c4ff;
+            box-shadow: 0 0 5px #40c4ff;
+        }
+        #trans-checkbox:checked ~ .label-text {
+            color: #40c4ff;
+            font-weight: bold;
+        }
+
+        /* 🟡 TCN+GRU (เหลือง) */
+        #tcn-checkbox:checked ~ .checkmark {
+            background-color: #ffd740;
+            box-shadow: 0 0 5px #ffd740;
+        }
+        #tcn-checkbox:checked ~ .label-text {
+            color: #ffd740;
+            font-weight: bold;
+        }
+
+        .label-text {
+            transition: 0.3s;
+        }
+
+        .glow-gradient {
+            font-size: 2em;
+            font-weight: bold;
+            background: linear-gradient(90deg, #00e676, #00bfa5);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: 1px;
+        }
+    </style>
+
+</head>
+<body>
+    <h2 style="text-align: center;"><span class="glow-gradient">SmartForecast</span></h2>
+    <p style="text-align: center; color:#ccc; font-size: 1em; margin-top: -10px;">
+        AI-powered stock trend predictions
+    </p>
+
+
+    <div class="stock-menu" id="stock-menu" style="text-align: center;">
+        {% for ticker in tickers %}
+            <a href="#" class="stock-link" data-ticker="{{ ticker }}">{{ ticker }}</a>
+        {% endfor %}
+    </div>
+    <div id="latest-date-info" style="text-align: center; margin-bottom: 10px; font-size: 0.95em; color: #bbb;"></div>
+
+    <div id="graph"></div>
+
+    <div class="checkbox-container" style="text-align: center;">
+        <label class="custom-checkbox">
+            <input type="checkbox" id="lstm-checkbox" checked>
+            <span class="checkmark"></span>
+            <span class="label-text">LSTM</span>
+        </label>
+        <label class="custom-checkbox">
+            <input type="checkbox" id="trans-checkbox" checked>
+            <span class="checkmark"></span>
+            <span class="label-text">Transformer</span>
+        </label>
+        <label class="custom-checkbox">
+            <input type="checkbox" id="tcn-checkbox" checked>
+            <span class="checkmark"></span>
+            <span class="label-text">TCN+GRU</span>
+        </label>
+    </div>
+
+    <div class="result-box" id="prediction-summary"></div>
+
+    <script>
+        let currentFigure;
+
+        function loadData(ticker) {
+            $.getJSON(`/data/${ticker}`, function (data) {
+                const trace1 = {
+                    x: data.actual_dates,
+                    y: data.actual_prices,
+                    mode: 'lines',
+                    name: 'Actual Prices',
+                    line: { color: 'green' }
+                };
+                const trace2 = {
+                    x: data.future_dates,
+                    y: data.lstm_prices,
+                    mode: 'lines+markers',
+                    name: 'LSTM Prediction',
+                    line: { color: '#ff5252' },
+                    visible: $('#lstm-checkbox').is(':checked') ? true : 'legendonly'
+                };
+                const trace3 = {
+                    x: data.future_dates,
+                    y: data.trans_prices,
+                    mode: 'lines+markers',
+                    name: 'Transformer Prediction',
+                    line: { color: '#40c4ff' },
+                    visible: $('#trans-checkbox').is(':checked') ? true : 'legendonly'
+                };
+                const trace4 = {
+                    x: data.future_dates,
+                    y: data.tcn_prices,
+                    mode: 'lines+markers',
+                    name: 'TCN+GRU Prediction',
+                    line: { color: '#ffd740' },
+                    visible: $('#tcn-checkbox').is(':checked') ? true : 'legendonly'
+                };
+
+                const layout = {
+                    xaxis: { title: 'Date' },
+                    yaxis: { title: 'Price (USD)' },
+                    plot_bgcolor: "#121212",
+                    paper_bgcolor: "#121212",
+                    font: { color: 'white' },
+                    autosize: true,
+                    showlegend: false
+                };
+
+                Plotly.newPlot('graph', [trace1, trace2, trace3, trace4], layout, { responsive: true }).then(function (figure) {
+                    currentFigure = figure;
+                });
+                $('#latest-date-info').text(`📅 ข้อมูลล่าสุดถึงวันที่ ${data.latest_date}`);
+
+
+                let lstm_text = `LSTM คาดการณ์ว่าอีก 30 วันจะ ` +
+                    `<span class="${data.lstm_return_pct >= 0 ? 'pos' : 'neg'}">` +
+                    `${data.lstm_return_pct >= 0 ? 'เพิ่มขึ้น📈' : 'ลดลง📉'} ${data.lstm_return_pct.toFixed(2)}%</span>`;
+
+                let trans_text = `Transformer คาดการณ์ว่าอีก 30 วันจะ ` +
+                    `<span class="${data.trans_return_pct >= 0 ? 'pos' : 'neg'}">` +
+                    `${data.trans_return_pct >= 0 ? 'เพิ่มขึ้น📈' : 'ลดลง📉'} ${data.trans_return_pct.toFixed(2)}%</span>`;
+
+                let tcn_text = `TCN+GRU คาดการณ์ว่าอีก 30 วันจะ ` +
+                    `<span class="${data.tcn_return_pct >= 0 ? 'pos' : 'neg'}">` +
+                    `${data.tcn_return_pct >= 0 ? 'เพิ่มขึ้น📈' : 'ลดลง📉'} ${data.tcn_return_pct.toFixed(2)}%</span>`;
+
+
+                $('#prediction-summary').html(`<p><strong>${lstm_text}</strong></p>
+                                               <p><strong>${trans_text}</strong></p>
+                                               <p><strong>${tcn_text}</strong></p>`);
+            });
+        }
+
+        function updateTraceVisibility() {
+            const showLSTM = $('#lstm-checkbox').is(':checked');
+            const showTrans = $('#trans-checkbox').is(':checked');
+            const showTCN = $('#tcn-checkbox').is(':checked');
+
+            Plotly.restyle('graph', { visible: showLSTM ? true : 'legendonly' }, [1]);
+            Plotly.restyle('graph', { visible: showTrans ? true : 'legendonly' }, [2]);
+            Plotly.restyle('graph', { visible: showTCN ? true : 'legendonly' }, [3]);
+        }
+
+        function setActive(ticker) {
+            $(".stock-link").removeClass("active");
+            $(`.stock-link[data-ticker="${ticker}"]`).addClass("active");
+        }
+
+        $(document).ready(function () {
+            const firstTicker = $(".stock-link").first().data("ticker");
+            setActive(firstTicker);
+            loadData(firstTicker);
+
+            $(".stock-link").click(function (e) {
+                e.preventDefault();
+                const ticker = $(this).data("ticker");
+                setActive(ticker);
+                loadData(ticker);
+            });
+
+            $('#lstm-checkbox').change(updateTraceVisibility);
+            $('#trans-checkbox').change(updateTraceVisibility);
+            $('#tcn-checkbox').change(updateTraceVisibility);
+        });
+    </script>
+</body>
+</html>
