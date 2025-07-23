@@ -48,6 +48,3 @@ def get_prediction_data(ticker):
         "tcn_return_pct": tcn_return_pct,
         "latest_date": latest_date
     })
-
-if __name__ == '__main__':
-    app.run(debug=True)
