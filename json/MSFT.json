@@ -1,0 +1,68 @@
+[
+    {
+        "Date": "2025-07-24",
+        "LSTM_Predicted_Price": 510.8800048828125,
+        "Transformer_Predicted_Price": 510.8800048828125,
+        "TCN_GRU_Predicted_Price": 510.8800048828125
+    },
+    {
+        "Date": "2025-07-27",
+        "LSTM_Predicted_Price": 511.567706229107,
+        "Transformer_Predicted_Price": 474.3264127861621,
+        "TCN_GRU_Predicted_Price": 516.0048780931102
+    },
+    {
+        "Date": "2025-07-30",
+        "LSTM_Predicted_Price": 513.0250825324038,
+        "Transformer_Predicted_Price": 499.51341369255533,
+        "TCN_GRU_Predicted_Price": 507.2484703956652
+    },
+    {
+        "Date": "2025-08-02",
+        "LSTM_Predicted_Price": 513.5453043620219,
+        "Transformer_Predicted_Price": 497.8162980738416,
+        "TCN_GRU_Predicted_Price": 507.23738629674335
+    },
+    {
+        "Date": "2025-08-05",
+        "LSTM_Predicted_Price": 513.8236248679168,
+        "Transformer_Predicted_Price": 476.7680205327342,
+        "TCN_GRU_Predicted_Price": 509.7296946606366
+    },
+    {
+        "Date": "2025-08-08",
+        "LSTM_Predicted_Price": 515.9373990733002,
+        "Transformer_Predicted_Price": 505.9223066809791,
+        "TCN_GRU_Predicted_Price": 509.1941560679479
+    },
+    {
+        "Date": "2025-08-11",
+        "LSTM_Predicted_Price": 514.327342352437,
+        "Transformer_Predicted_Price": 518.4302251011541,
+        "TCN_GRU_Predicted_Price": 506.09669853407104
+    },
+    {
+        "Date": "2025-08-14",
+        "LSTM_Predicted_Price": 517.3596351289161,
+        "Transformer_Predicted_Price": 504.20673786460975,
+        "TCN_GRU_Predicted_Price": 509.12579397432273
+    },
+    {
+        "Date": "2025-08-17",
+        "LSTM_Predicted_Price": 518.2575080432289,
+        "Transformer_Predicted_Price": 471.34829202062247,
+        "TCN_GRU_Predicted_Price": 509.9359989743607
+    },
+    {
+        "Date": "2025-08-20",
+        "LSTM_Predicted_Price": 517.2157245478593,
+        "Transformer_Predicted_Price": 484.9581343080645,
+        "TCN_GRU_Predicted_Price": 512.3121070045017
+    },
+    {
+        "Date": "2025-08-23",
+        "LSTM_Predicted_Price": 517.7563484276907,
+        "Transformer_Predicted_Price": 503.33088089403464,
+        "TCN_GRU_Predicted_Price": 515.5912341377407
+    }
+]
