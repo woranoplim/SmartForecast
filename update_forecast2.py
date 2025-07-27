@@ -1,0 +1,175 @@
+import pandas as pd
+import numpy as np
+import torch
+import torch.nn as nn
+import tensorflow as tf
+from tensorflow.keras.models import load_model
+from datetime import timedelta
+import matplotlib.pyplot as plt
+import json
+from sklearn.preprocessing import MinMaxScaler
+import os
+
+# ---------- Hyperparameters ----------
+forecast_horizon = 10
+step = 3
+seq_length_lstm = 240
+seq_length_trans = 240
+seq_length_tcn = 240
+
+# ---------- สร้างลำดับ ----------
+def create_sequences(features, close_prices, seq_len, horizon, step):
+    X, y = [], []
+    for i in range(len(features) - seq_len - horizon * step + 1):
+        X.append(features[i:i+seq_len])
+        targets = []
+        base_price = close_prices[i + seq_len - 1]
+        for j in range(1, horizon + 1):
+            future_price = close_prices[i + seq_len + j*step - 1]
+            pct_change = (future_price - base_price) / base_price
+            targets.append(pct_change)
+        y.append(targets)
+    return np.array(X), np.array(y)
+
+# ---------- Learnable Positional Encoding ----------
+class LearnablePositionalEncoding(tf.keras.layers.Layer):
+    def __init__(self, sequence_length, d_model, **kwargs):  # ← เพิ่ม **kwargs
+        super().__init__(**kwargs)  # ← ส่ง kwargs ไปให้ Layer base class
+        self.sequence_length = sequence_length
+        self.d_model = d_model
+        self.pos_encoding = self.add_weight(
+            name="pos_encoding",
+            shape=(1, sequence_length, d_model),
+            initializer="random_normal",
+            trainable=True
+        )
+
+    def call(self, x):
+        return x + self.pos_encoding
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            "sequence_length": self.sequence_length,
+            "d_model": self.d_model,
+        })
+        return config
+
+
+# ---------- Hybrid TCN + GRU ----------
+class TCNBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, dilation):
+        super().__init__()
+        padding = (kernel_size - 1) * dilation // 2
+        self.conv = nn.Conv1d(in_channels, out_channels, kernel_size,
+                              padding=padding, dilation=dilation)
+        self.norm = nn.BatchNorm1d(out_channels)
+        self.relu = nn.ReLU()
+
+    def forward(self, x):
+        return self.relu(self.norm(self.conv(x)))
+
+class HybridTCN_GRU(nn.Module):
+    def __init__(self, num_inputs, num_outputs):
+        super().__init__()
+        self.tcn = nn.Sequential(
+            TCNBlock(num_inputs, 64, kernel_size=3, dilation=1),
+            nn.Dropout(0.2),
+            TCNBlock(64, 64, kernel_size=3, dilation=2),
+            nn.Dropout(0.2),
+            TCNBlock(64, 64, kernel_size=3, dilation=4),
+            nn.Dropout(0.2),
+        )
+        self.gru = nn.GRU(input_size=64, hidden_size=64, batch_first=True)
+        self.fc = nn.Linear(64, num_outputs)
+
+    def forward(self, x):
+        x = x.permute(0, 2, 1)
+        x = self.tcn(x)
+        x = x.permute(0, 2, 1)
+        _, h = self.gru(x)
+        return self.fc(h.squeeze(0))
+
+# ---------- MAIN LOOP ----------
+tickers = ["AAPL", "MSFT"]
+for ticker in tickers:
+    print(f"\n🔁 กำลังทำนาย {ticker}")
+
+    # ---------- Load & Prepare Data ----------
+    data = pd.read_csv(f"datasets/{ticker}_dataset.csv", index_col=0, parse_dates=True)
+    features = ['Close', 'High', 'Low', 'Open', 'Volume',
+                'EMA_12', 'EMA_26', 'RSI', 'MACD',
+                'MA_10', 'MA_20', 'MA_30', 'MA_45',
+                'SD_20', 'Upper_20', 'Lower_20']
+    data = data[features].dropna()
+    close_prices = data["Close"].astype(float).values
+    scaler = MinMaxScaler()
+    scaled_features = scaler.fit_transform(data[features])
+
+    # ---------- Create Sequences ----------
+    X_lstm, _ = create_sequences(scaled_features, close_prices, seq_length_lstm, forecast_horizon, step)
+    X_trans, _ = create_sequences(scaled_features, close_prices, seq_length_trans, forecast_horizon, step)
+    X_tcn, _ = create_sequences(scaled_features, close_prices, seq_length_tcn, forecast_horizon, step)
+
+    last_seq_lstm = X_lstm[-1]
+    last_seq_trans = X_trans[-1]
+    last_seq_tcn = X_tcn[-1]
+    last_close = close_prices[-1]
+    last_date = data.index[-1]
+    future_dates = [last_date + timedelta(days=(i + 1) * step) for i in range(forecast_horizon)]
+
+    # ---------- Load Models ----------
+    lstm_model = load_model("lstm_040725.h5", compile=False)
+    transformer_model = load_model(
+        "transformer_040725.h5",
+        compile=False,
+        custom_objects={"LearnablePositionalEncoding": LearnablePositionalEncoding}
+    )
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    tcn_gru_model = HybridTCN_GRU(num_inputs=X_tcn.shape[2], num_outputs=forecast_horizon).to(device)
+    tcn_gru_model.load_state_dict(torch.load(f"{ticker}_tcn_gru.pt", map_location=device))
+    tcn_gru_model.eval()
+
+    # ---------- Predict ----------
+    lstm_pred_pct = lstm_model.predict(last_seq_lstm.reshape(1, seq_length_lstm, X_lstm.shape[2]))[0]
+    trans_pred_pct = transformer_model.predict(last_seq_trans.reshape(1, seq_length_trans, X_trans.shape[2]))[0]
+
+    input_tensor = torch.tensor(last_seq_tcn.reshape(1, seq_length_tcn, X_tcn.shape[2]), dtype=torch.float32).to(device)
+    tcn_pred_pct = tcn_gru_model(input_tensor).detach().cpu().numpy()[0]
+
+    lstm_future_prices = last_close * (1 + lstm_pred_pct)
+    trans_future_prices = last_close * (1 + trans_pred_pct)
+    tcn_future_prices = last_close * (1 + tcn_pred_pct)
+
+    # ---------- % Return ----------
+    lstm_return_pct = ((lstm_future_prices[-1] - last_close) / last_close) * 100
+    trans_return_pct = ((trans_future_prices[-1] - last_close) / last_close) * 100
+    tcn_return_pct = ((tcn_future_prices[-1] - last_close) / last_close) * 100
+
+    print(f"LSTM คาดว่าอีก {forecast_horizon * step} วันจะ {'เพิ่มขึ้น📈' if lstm_return_pct >= 0 else 'ลดลง📉'} {lstm_return_pct:.2f}%")
+    print(f"Transformer คาดว่าอีก {forecast_horizon * step} วันจะ {'เพิ่มขึ้น📈' if trans_return_pct >= 0 else 'ลดลง📉'} {trans_return_pct:.2f}%")
+    print(f"Hybrid TCN+GRU คาดว่าอีก {forecast_horizon * step} วันจะ {'เพิ่มขึ้น📈' if tcn_return_pct >= 0 else 'ลดลง📉'} {tcn_return_pct:.2f}%")
+
+    # ---------- Save JSON ----------
+    results_df = pd.DataFrame({
+        "Date": [d.strftime("%Y-%m-%d") for d in future_dates],
+        "LSTM_Predicted_Price": lstm_future_prices,
+        "Transformer_Predicted_Price": trans_future_prices,
+        "TCN_GRU_Predicted_Price": tcn_future_prices,
+    })
+    results_df.loc[-1] = {
+        "Date": last_date.strftime("%Y-%m-%d"),
+        "LSTM_Predicted_Price": last_close,
+        "Transformer_Predicted_Price": last_close,
+        "TCN_GRU_Predicted_Price": last_close,
+    }
+    results_df.sort_index(inplace=True)
+    results_json = results_df.to_dict(orient="records")
+    # สร้างโฟลเดอร์ถ้ายังไม่มี
+    os.makedirs("json", exist_ok=True)
+
+    # เซฟลงในโฟลเดอร์ json/
+    with open(f"json/{ticker}.json", "w") as f:
+        json.dump(results_json, f, indent=4)
+
+    print(f"✅ บันทึก {ticker}.json สำเร็จ")
