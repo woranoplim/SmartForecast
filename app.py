@@ -7,7 +7,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def index():
-    tickers = ['GOOGL', 'TSLA', 'AMZN']  # เปลี่ยนได้ตามที่มีไฟล์ .json
+    tickers = ['GOOGL', 'TSLA', 'AMZN', 'AAPL', 'MSFT', 'META', 'NVDA']  # เปลี่ยนได้ตามที่มีไฟล์ .json
     return render_template('index.html', tickers=tickers)
 
 @app.route('/data/<ticker>')
