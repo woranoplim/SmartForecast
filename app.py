@@ -32,8 +32,9 @@ def get_prediction_data(ticker):
     tcn_return_pct = ((tcn_prices[-1] - last_close) / last_close) * 100
 
     df_actual = pd.read_csv(f"datasets/{ticker}_dataset.csv", index_col=0, parse_dates=True)
-    actual_dates = df_actual.index[-60:].astype(str).tolist()
-    actual_prices = df_actual["Close"].values[-60:].tolist()
+    actual_days = 504  # ← ประมาณ 6 เดือน (21 วันต่อเดือน × 6)
+    actual_dates = df_actual.index[-actual_days:].astype(str).tolist()
+    actual_prices = df_actual["Close"].values[-actual_days:].tolist()
     latest_date = df_actual.index[-1].strftime('%Y-%m-%d')
     return jsonify({
         "ticker": ticker,
@@ -48,3 +49,6 @@ def get_prediction_data(ticker):
         "tcn_return_pct": tcn_return_pct,
         "latest_date": latest_date
     })
+
+if __name__ == '__main__':
+    app.run(debug=True)
