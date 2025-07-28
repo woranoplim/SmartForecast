@@ -50,7 +50,7 @@
             box-shadow: 0 0 10px rgba(255, 255, 255, 0.05);
             line-height: 1.6;
             text-align: left;
-            max-width: 500px;
+            max-width: 700px;
             width: 90%;
         }
 
@@ -151,6 +151,17 @@
             -webkit-text-fill-color: transparent;
             letter-spacing: 1px;
         }
+        #latest-date-info {
+            text-align: center;
+            margin-bottom: 10px;
+            font-size: 0.95em;
+            color: #bbb;
+            min-height: 24px; /* ✅ ป้องกันกระพริบหรือเปลี่ยนขนาด */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
     </style>
 
 </head>
@@ -200,7 +211,8 @@
                     y: data.actual_prices,
                     mode: 'lines',
                     name: 'Actual Prices',
-                    line: { color: 'green' }
+                    line: { color: 'green' },
+                    hovertemplate: 'Date: %{x}<br>Price: %{y:.2f}<extra></extra>'
                 };
                 const trace2 = {
                     x: data.future_dates,
@@ -208,7 +220,8 @@
                     mode: 'lines+markers',
                     name: 'LSTM Prediction',
                     line: { color: '#ff5252' },
-                    visible: $('#lstm-checkbox').is(':checked') ? true : 'legendonly'
+                    visible: $('#lstm-checkbox').is(':checked') ? true : 'legendonly',
+                    hovertemplate: 'Date: %{x}<br>Price: %{y:.2f}<extra></extra>'
                 };
                 const trace3 = {
                     x: data.future_dates,
@@ -216,7 +229,8 @@
                     mode: 'lines+markers',
                     name: 'Transformer Prediction',
                     line: { color: '#40c4ff' },
-                    visible: $('#trans-checkbox').is(':checked') ? true : 'legendonly'
+                    visible: $('#trans-checkbox').is(':checked') ? true : 'legendonly',
+                    hovertemplate: 'Date: %{x}<br>Price: %{y:.2f}<extra></extra>'
                 };
                 const trace4 = {
                     x: data.future_dates,
@@ -224,14 +238,30 @@
                     mode: 'lines+markers',
                     name: 'TCN+GRU Prediction',
                     line: { color: '#ffd740' },
-                    visible: $('#tcn-checkbox').is(':checked') ? true : 'legendonly'
+                    visible: $('#tcn-checkbox').is(':checked') ? true : 'legendonly',
+                    hovertemplate: 'Date: %{x}<br>Price: %{y:.2f}<extra></extra>'
                 };
 
                 const layout = {
-                    xaxis: { title: 'Date' },
+                    xaxis: {
+                        title: 'Date',
+                        rangeselector: {
+                            buttons: [
+                                { count: 4, label: '4M', step: 'month', stepmode: 'backward' },
+                                { count: 6, label: '6M', step: 'month', stepmode: 'backward' },
+                                { count: 1, label: '1Y', step: 'year', stepmode: 'backward' },
+                                { step: 'all', label: 'All' }
+                            ],
+                            bgcolor: "#444",
+                            activecolor: "#00c853",
+                            font: { color: "white" }
+                        },
+                        rangeslider: { visible: false },
+                    },
+
                     yaxis: { title: 'Price (USD)' },
-                    plot_bgcolor: "#121212",
-                    paper_bgcolor: "#121212",
+                    plot_bgcolor: "#1a1a1a",
+                    paper_bgcolor: "#1a1a1a",
                     font: { color: 'white' },
                     autosize: true,
                     showlegend: false
@@ -243,17 +273,26 @@
                 $('#latest-date-info').text(`📅 ข้อมูลล่าสุดถึงวันที่ ${data.latest_date}`);
 
 
-                let lstm_text = `LSTM คาดการณ์ว่าอีก 30 วันจะ ` +
-                    `<span class="${data.lstm_return_pct >= 0 ? 'pos' : 'neg'}">` +
-                    `${data.lstm_return_pct >= 0 ? 'เพิ่มขึ้น📈' : 'ลดลง📉'} ${data.lstm_return_pct.toFixed(2)}%</span>`;
+                let current_price = data.lstm_prices[0].toFixed(2);
+                let lstm_future_price = data.lstm_prices[data.lstm_prices.length - 1].toFixed(2);
+                let trans_future_price = data.trans_prices[data.trans_prices.length - 1].toFixed(2);
+                let tcn_future_price = data.tcn_prices[data.tcn_prices.length - 1].toFixed(2);
 
-                let trans_text = `Transformer คาดการณ์ว่าอีก 30 วันจะ ` +
-                    `<span class="${data.trans_return_pct >= 0 ? 'pos' : 'neg'}">` +
-                    `${data.trans_return_pct >= 0 ? 'เพิ่มขึ้น📈' : 'ลดลง📉'} ${data.trans_return_pct.toFixed(2)}%</span>`;
+                let lstm_text = `LSTM คาดการณ์ว่าอีก 30 วันจะ
+                    <span class="${data.lstm_return_pct >= 0 ? 'pos' : 'neg'}">
+                    ${data.lstm_return_pct >= 0 ? 'เพิ่มขึ้น📈' : 'ลดลง📉'} ${data.lstm_return_pct.toFixed(2)}%</span>
+                    จากราคา ${current_price} USD → ${lstm_future_price} USD`;
 
-                let tcn_text = `TCN+GRU คาดการณ์ว่าอีก 30 วันจะ ` +
-                    `<span class="${data.tcn_return_pct >= 0 ? 'pos' : 'neg'}">` +
-                    `${data.tcn_return_pct >= 0 ? 'เพิ่มขึ้น📈' : 'ลดลง📉'} ${data.tcn_return_pct.toFixed(2)}%</span>`;
+                let trans_text = `Transformer คาดการณ์ว่าอีก 30 วันจะ
+                    <span class="${data.trans_return_pct >= 0 ? 'pos' : 'neg'}">
+                    ${data.trans_return_pct >= 0 ? 'เพิ่มขึ้น📈' : 'ลดลง📉'} ${data.trans_return_pct.toFixed(2)}%</span>
+                    จากราคา ${current_price} USD → ${trans_future_price} USD`;
+
+                let tcn_text = `TCN+GRU คาดการณ์ว่าอีก 30 วันจะ
+                    <span class="${data.tcn_return_pct >= 0 ? 'pos' : 'neg'}">
+                    ${data.tcn_return_pct >= 0 ? 'เพิ่มขึ้น📈' : 'ลดลง📉'} ${data.tcn_return_pct.toFixed(2)}%</span>
+                    จากราคา ${current_price} USD → ${tcn_future_price} USD`;
+
 
 
                 $('#prediction-summary').html(`<p><strong>${lstm_text}</strong></p>
